@@ -377,7 +377,7 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
       .readPdf(pdfName)
       .then((bytes) => {
         if (!cancelled && bytes && bytes.length > 0) {
-          const blob = new Blob([bytes], { type: 'application/pdf' })
+          const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' })
           setPdfUrl(URL.createObjectURL(blob))
         }
       })
@@ -402,7 +402,7 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
 
       if (out.pdfFilename) {
         const bytes = await backend.readPdf(out.pdfFilename)
-        const blob = new Blob([bytes], { type: 'application/pdf' })
+        const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' })
         setPdfUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev)
           return URL.createObjectURL(blob)

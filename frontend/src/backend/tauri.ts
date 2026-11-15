@@ -1,5 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
-import { BackendError, type BackendErrorKind, type Listing, type ProjectBackend, type ProjectInfo, type RecentProject, type TextFile } from './types'
+import {
+  BackendError,
+  type BackendErrorKind,
+  type CompilerInfo,
+  type CompileResult,
+  type Listing,
+  type ProjectBackend,
+  type ProjectInfo,
+  type RecentProject,
+  type TextFile,
+} from './types'
 
 /** Call a Rust command, turning its `{ kind, message }` errors into BackendError. */
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -28,4 +38,11 @@ export const tauriBackend: ProjectBackend = {
   writeTextFile: (path, content, expectedModifiedMs) => call<number>('write_text_file', { path, content, expectedModifiedMs: expectedModifiedMs ?? null }),
   createFile: (path) => call<number>('create_file', { path }),
   createFolder: (path) => call<void>('create_folder', { path }),
+  detectCompilers: () => call<CompilerInfo[]>('detect_compilers'),
+  compileProject: (rootFile, compilerPath) => call<CompileResult>('compile_project', { rootFile, compilerPath: compilerPath ?? null }),
+  readPdf: async (filename) => {
+    const raw = await call<number[]>('read_pdf', { filename })
+    return new Uint8Array(raw)
+  },
+  installTectonic: () => call<string>('install_tectonic'),
 }

@@ -43,6 +43,21 @@ export interface StarterFile {
   content: string
 }
 
+export interface CompilerInfo {
+  available: boolean
+  name: string
+  path: string
+  kind: string
+  version: string
+}
+
+export interface CompileResult {
+  success: boolean
+  log: string
+  pdfFilename: string | null
+  durationMs: number
+}
+
 export type BackendErrorKind = 'noProject' | 'invalidPath' | 'notFound' | 'alreadyExists' | 'tooLarge' | 'notText' | 'conflict' | 'io'
 
 /** An error from the backend, with a message written for the user. */
@@ -80,4 +95,10 @@ export interface ProjectBackend {
   writeTextFile(path: string, content: string, expectedModifiedMs?: number): Promise<number>
   createFile(path: string): Promise<number>
   createFolder(path: string): Promise<void>
+
+  /* Compiler and PDF methods */
+  detectCompilers(): Promise<CompilerInfo[]>
+  compileProject(rootFile: string, compilerPath?: string): Promise<CompileResult>
+  readPdf(filename: string): Promise<Uint8Array>
+  installTectonic(): Promise<string>
 }

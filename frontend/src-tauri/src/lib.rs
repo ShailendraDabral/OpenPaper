@@ -9,6 +9,7 @@
 //!   interface cannot nominate an arbitrary folder.
 //! * Every file path is relative to that folder and is validated (`paths.rs`).
 
+mod compiler;
 mod error;
 mod paths;
 mod project;
@@ -158,6 +159,26 @@ async fn create_folder(state: State<'_, AppState>, path: String) -> Result<()> {
     project::create_dir(&current_root(&state)?, &path)
 }
 
+#[tauri::command]
+async fn detect_compilers() -> Result<Vec<compiler::CompilerInfo>> {
+    Ok(compiler::detect_compilers())
+}
+
+#[tauri::command]
+async fn compile_project(state: State<'_, AppState>, root_file: String, compiler_path: Option<String>) -> Result<compiler::CompileOutput> {
+    compiler::compile(&current_root(&state)?, &root_file, compiler_path.as_deref())
+}
+
+#[tauri::command]
+async fn read_pdf(state: State<'_, AppState>, filename: String) -> Result<Vec<u8>> {
+    compiler::read_pdf_file(&current_root(&state)?, &filename)
+}
+
+#[tauri::command]
+async fn install_tectonic() -> Result<String> {
+    compiler::install_tectonic()
+}
+
 pub fn run() {
     // `openpaper path/to/project` opens that folder, like `code .`
     let launch_folder = std::env::args().skip(1).find(|arg| !arg.starts_with('-')).map(PathBuf::from).filter(|p| p.is_dir());
@@ -178,6 +199,10 @@ pub fn run() {
             write_text_file,
             create_file,
             create_folder,
+            detect_compilers,
+            compile_project,
+            read_pdf,
+            install_tectonic,
         ])
         .run(tauri::generate_context!())
         .expect("OpenPaper could not start");

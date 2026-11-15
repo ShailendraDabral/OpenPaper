@@ -226,4 +226,21 @@ export const memoryBackend: ProjectBackend = {
     addFile(project, `${path}/.keep`, null)
     project.files.delete(`${path}/.keep`)
   },
+  detectCompilers: async () => [
+    {
+      available: true,
+      name: 'Browser Mock Compiler',
+      path: 'in-browser',
+      kind: 'tectonic',
+      version: 'Browser Mock 1.0',
+    },
+  ],
+  compileProject: async () => ({
+    success: true,
+    log: 'Running mock LaTeX compiler in browser environment...\nCompilation completed successfully (browser preview mode).',
+    pdfFilename: null,
+    durationMs: 150,
+  }),
+  readPdf: async () => new Uint8Array(),
+  installTectonic: async () => 'installed',
 }

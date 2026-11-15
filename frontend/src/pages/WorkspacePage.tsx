@@ -1,7 +1,7 @@
 import { ChevronsDownUp, ChevronsUpDown, FileQuestion, LayoutGrid, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useProject } from '../app/ProjectProvider'
-import { backend, BackendError, type FileEntry, type ProjectInfo } from '../backend'
+import { backend, BackendError, type CompilerInfo, type FileEntry, type ProjectInfo } from '../backend'
 import { Button } from '../components/ui/Button'
 import { Dialog } from '../components/ui/Dialog'
 import { LogoMark } from '../components/ui/Logo'
@@ -341,6 +341,110 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
     return () => window.clearTimeout(timer)
   }, [projectFiles, rootFile])
 
+  /* ------------------------------- Compiler ------------------------------- */
+
+  const [detectedCompilers, setDetectedCompilers] = useState<CompilerInfo[]>([])
+  const [selectedCompiler, setSelectedCompiler] = useState<string | null>(null)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [compiling, setCompiling] = useState(false)
+  const [compileError, setCompileError] = useState<string | null>(null)
+  const [compilerLog, setCompilerLog] = useState<string>('')
+  const [durationMs, setDurationMs] = useState<number | null>(null)
+  const [installingTectonic, setInstallingTectonic] = useState(false)
+
+  const refreshCompilers = useCallback(async () => {
+    try {
+      const list = await backend.detectCompilers()
+      setDetectedCompilers(list)
+      if (list.length > 0) {
+        setSelectedCompiler((prev) => prev || list[0].path)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshCompilers()
+  }, [refreshCompilers])
+
+  // Try loading existing compiled PDF on load or rootFile change
+  useEffect(() => {
+    if (!rootFile) return
+    const pdfName = rootFile.replace(/\.tex$/i, '.pdf')
+    let cancelled = false
+    backend
+      .readPdf(pdfName)
+      .then((bytes) => {
+        if (!cancelled && bytes && bytes.length > 0) {
+          const blob = new Blob([bytes], { type: 'application/pdf' })
+          setPdfUrl(URL.createObjectURL(blob))
+        }
+      })
+      .catch(() => {
+        /* PDF not present yet */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [rootFile])
+
+  const compile = useCallback(async () => {
+    if (compiling || !rootFile) return
+    await save()
+    setCompiling(true)
+    setCompileError(null)
+
+    try {
+      const out = await backend.compileProject(rootFile, selectedCompiler || undefined)
+      setDurationMs(out.durationMs)
+      setCompilerLog(out.log)
+
+      if (out.pdfFilename) {
+        const bytes = await backend.readPdf(out.pdfFilename)
+        const blob = new Blob([bytes], { type: 'application/pdf' })
+        setPdfUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return URL.createObjectURL(blob)
+        })
+      }
+
+      if (!out.success) {
+        setCompileError('Compilation failed. Check the Log tab below for compiler output.')
+      }
+    } catch (err) {
+      const msg = messageOf(err)
+      setCompileError(msg)
+      setCompilerLog((prev) => (prev ? `${prev}\n\nError: ${msg}` : `Error: ${msg}`))
+    } finally {
+      setCompiling(false)
+    }
+  }, [compiling, rootFile, save, selectedCompiler])
+
+  const handleInstallTectonic = useCallback(async () => {
+    setInstallingTectonic(true)
+    try {
+      await backend.installTectonic()
+      await refreshCompilers()
+    } catch (err) {
+      setNotice(`Failed to install Tectonic: ${messageOf(err)}`)
+    } finally {
+      setInstallingTectonic(false)
+    }
+  }, [refreshCompilers])
+
+  // Keyboard shortcut: Ctrl+B or Ctrl+Enter to compile
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'Enter')) {
+        e.preventDefault()
+        void compile()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [compile])
+
   const jumpTo = (issue: Issue) => {
     if (files[issue.file] === undefined) return
     openFile(issue.file)
@@ -524,14 +628,32 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
 
             {/* Right: preview */}
             <section aria-label="Preview" className="min-h-0 shrink-0" style={{ width: previewWidth, maxWidth: '60%' }}>
-              <PreviewPanel blocks={result.blocks} />
+              <PreviewPanel
+                blocks={result.blocks}
+                rootFile={rootFile}
+                pdfUrl={pdfUrl}
+                compiling={compiling}
+                compileError={compileError}
+                durationMs={durationMs}
+                onCompile={compile}
+                detectedCompilers={detectedCompilers}
+                selectedCompiler={selectedCompiler}
+                onSelectCompiler={setSelectedCompiler}
+                onInstallTectonic={handleInstallTectonic}
+                installingTectonic={installingTectonic}
+              />
             </section>
           </div>
 
           {/* Bottom: diagnostics */}
           {bottomOpen && <Splitter orientation="horizontal" label="Resize diagnostics" onResize={(d) => setBottomHeight((h) => clamp(h - d, 100, 520))} />}
           <section aria-label="Diagnostics" className={cn('shrink-0', !bottomOpen && 'border-t border-line')} style={{ height: bottomOpen ? bottomHeight : 36 }}>
-            <BottomPanel result={result} open={bottomOpen} onToggle={() => setBottomOpen((o) => !o)} onJump={jumpTo} />
+            <BottomPanel
+              result={{ ...result, log: compilerLog || result.log }}
+              open={bottomOpen}
+              onToggle={() => setBottomOpen((o) => !o)}
+              onJump={jumpTo}
+            />
           </section>
         </div>
       </div>

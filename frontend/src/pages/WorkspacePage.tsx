@@ -13,7 +13,8 @@ import { CodeEditor, type CodeEditorHandle, type CursorPosition } from '../edito
 import { FileExplorer } from '../editor/FileExplorer'
 import { findRootFile, isTextPath } from '../editor/fileTypes'
 import { checkProject } from '../editor/latex/check'
-import { allBibEntries, allLabels } from '../editor/latex/source'
+import { allBibEntries, allLabels, expandInputs } from '../editor/latex/source'
+import { computeLatexWordCount } from '../editor/latex/wordCount'
 import type { CheckResult, Issue, ProjectFiles } from '../editor/latex/types'
 import type { CompletionData } from '../editor/latexEditor'
 import { PreviewPanel } from '../editor/PreviewPanel'
@@ -354,6 +355,38 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
     }
   }
 
+  const uploadFiles = async (fileList: FileList | File[], targetFolder?: string) => {
+    const list = Array.from(fileList)
+    if (list.length === 0) return
+    try {
+      let count = 0
+      for (const f of list) {
+        const relPath = targetFolder ? `${targetFolder}/${f.name}` : f.name
+        if (isTextPath(f.name)) {
+          const text = await f.text()
+          const modifiedMs = await backend.writeTextFile(relPath, text)
+          disk.current[relPath] = { content: text, modifiedMs }
+          setFiles((prev) => ({ ...prev, [relPath]: text }))
+        } else {
+          const buffer = await f.arrayBuffer()
+          await backend.writeBinaryFile(relPath, new Uint8Array(buffer))
+        }
+        count++
+      }
+      const listing = await backend.listFiles()
+      setEntries(listing.entries)
+      setNotice(`Uploaded ${count} file${count === 1 ? '' : 's'} successfully.`)
+    } catch (e) {
+      setNotice(messageOf(e))
+    }
+  }
+
+  const handleRevealPdf = async () => {
+    if (!rootFile) return
+    const pdfName = rootFile.replace(/\.tex$/i, '.pdf')
+    await backend.revealFile(pdfName)
+  }
+
   const leave = async () => {
     await save()
     await closeProject()
@@ -373,6 +406,13 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
     const timer = window.setTimeout(() => setResult(checkProject(projectFiles, rootFile)), 400)
     return () => window.clearTimeout(timer)
   }, [projectFiles, rootFile])
+
+  const [showWordCount, setShowWordCount] = useState(false)
+  const wordCount = useMemo(() => {
+    if (!rootFile || typeof files[rootFile] !== 'string') return null
+    const expanded = expandInputs(projectFiles, rootFile) || files[rootFile]
+    return computeLatexWordCount(expanded)
+  }, [files, projectFiles, rootFile])
 
   /* ------------------------------- Compiler ------------------------------- */
 
@@ -489,7 +529,12 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
     const paths = Object.keys(f)
     const tex = paths.filter((p) => p.endsWith('.tex'))
     return {
-      citations: allBibEntries(f).map((e) => ({ key: e.key, title: e.fields.title ?? '' })),
+      citations: allBibEntries(f).map((e) => ({
+        key: e.key,
+        title: e.fields.title ?? '',
+        author: e.fields.author,
+        year: e.fields.year,
+      })),
       labels: allLabels(f, tex),
       texFiles: tex.filter((p) => p !== root),
       figureFiles: paths.filter((p) => /\.(pdf|png|jpe?g|eps)$/i.test(p)),
@@ -561,6 +606,7 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
                 onCreateFile={createFile}
                 onCreateFolder={createFolder}
                 onDelete={deleteFileOrFolder}
+                onUpload={uploadFiles}
               />
             </aside>
             <Splitter orientation="vertical" label="Resize project explorer" onResize={(d) => setExplorerWidth((w) => clamp(w + d, 160, 480))} />
@@ -654,6 +700,16 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
                     <span>{active.endsWith('.bib') ? 'BibTeX' : active.endsWith('.tex') ? 'LaTeX' : 'Plain text'}</span>
                   </>
                 )}
+                {wordCount && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWordCount(true)}
+                    className="flex items-center gap-1.5 rounded px-2 py-0.5 text-xs text-body hover:bg-line/40 hover:text-ink transition-colors cursor-pointer"
+                    title="View academic word count breakdown"
+                  >
+                    <span className="font-semibold text-ink tabular-nums">{wordCount.totalWords.toLocaleString()}</span> words
+                  </button>
+                )}
                 <span className="ml-auto hidden lg:inline">Saved automatically. Type \ for suggestions.</span>
               </div>
             </section>
@@ -675,6 +731,7 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
                 onSelectCompiler={setSelectedCompiler}
                 onInstallTectonic={handleInstallTectonic}
                 installingTectonic={installingTectonic}
+                onRevealPdf={handleRevealPdf}
               />
             </section>
           </div>
@@ -683,7 +740,9 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
           {bottomOpen && <Splitter orientation="horizontal" label="Resize diagnostics" onResize={(d) => setBottomHeight((h) => clamp(h - d, 100, 520))} />}
           <section aria-label="Diagnostics" className={cn('shrink-0', !bottomOpen && 'border-t border-line')} style={{ height: bottomOpen ? bottomHeight : 36 }}>
             <BottomPanel
-              result={{ ...result, log: compilerLog || result.log }}
+              result={result}
+              compilerLog={compilerLog}
+              rootFile={rootFile}
               open={bottomOpen}
               onToggle={() => setBottomOpen((o) => !o)}
               onJump={jumpTo}
@@ -711,6 +770,58 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
               </button>
             </div>
           </>
+        )}
+      </Dialog>
+
+      {/* Academic Word Count Modal */}
+      <Dialog
+        open={showWordCount}
+        onClose={() => setShowWordCount(false)}
+        title="Document Word Count"
+        description="Comprehensive academic breakdown calculated across the active manuscript."
+      >
+        {wordCount && (
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-line bg-surface p-3 text-center">
+                <span className="text-2xl font-bold text-accent tabular-nums">{wordCount.totalWords.toLocaleString()}</span>
+                <p className="mt-0.5 text-xs text-muted">Total Words</p>
+              </div>
+              <div className="rounded-lg border border-line bg-surface p-3 text-center">
+                <span className="text-2xl font-bold text-ink tabular-nums">{wordCount.textWords.toLocaleString()}</span>
+                <p className="mt-0.5 text-xs text-muted">Text Body Words</p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-line rounded-lg border border-line bg-surface text-xs">
+              <div className="flex justify-between px-3.5 py-2.5">
+                <span className="text-body">Section Headings</span>
+                <span className="font-medium text-ink tabular-nums">{wordCount.headerWords.toLocaleString()} words</span>
+              </div>
+              <div className="flex justify-between px-3.5 py-2.5">
+                <span className="text-body">Captions</span>
+                <span className="font-medium text-ink tabular-nums">{wordCount.captionWords.toLocaleString()} words</span>
+              </div>
+              <div className="flex justify-between px-3.5 py-2.5">
+                <span className="text-body">Math Displays & Equations</span>
+                <span className="font-medium text-ink tabular-nums">{wordCount.mathDisplays}</span>
+              </div>
+              <div className="flex justify-between px-3.5 py-2.5">
+                <span className="text-body">Figures</span>
+                <span className="font-medium text-ink tabular-nums">{wordCount.figureCount}</span>
+              </div>
+              <div className="flex justify-between px-3.5 py-2.5">
+                <span className="text-body">Tables</span>
+                <span className="font-medium text-ink tabular-nums">{wordCount.tableCount}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="secondary" onClick={() => setShowWordCount(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
         )}
       </Dialog>
     </div>

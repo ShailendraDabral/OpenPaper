@@ -169,6 +169,17 @@ pub fn write_text(root: &Path, rel: &str, content: &str, expected_modified_ms: O
     Ok(modified_ms(&meta))
 }
 
+/// Write a binary file (e.g. image, PDF) and return its new modification time.
+pub fn write_bytes(root: &Path, rel: &str, bytes: &[u8]) -> Result<u64> {
+    let path = resolve_new(root, rel)?;
+    let failed = |e| AppError::io(&format!("Could not save \"{rel}\""), e);
+    let parent = path.parent().ok_or_else(|| AppError::InvalidPath(format!("\"{rel}\" has no parent folder.")))?;
+    fs::create_dir_all(parent).map_err(failed)?;
+    fs::write(&path, bytes).map_err(failed)?;
+    let meta = fs::metadata(&path).map_err(failed)?;
+    Ok(modified_ms(&meta))
+}
+
 /// Create an empty file. Fails if something with that name exists.
 pub fn create_file(root: &Path, rel: &str) -> Result<u64> {
     let path = resolve_new(root, rel)?;

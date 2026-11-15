@@ -9,6 +9,7 @@ import {
   FolderOpen,
   FolderPlus,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Button } from '../components/ui/Button'
@@ -27,6 +28,7 @@ interface Props {
   onCreateFile: (path: string) => void
   onCreateFolder: (path: string) => void
   onDelete?: (path: string) => void
+  onUpload?: (files: FileList | File[], targetFolder?: string) => Promise<void>
 }
 
 type Adding = { kind: 'file' | 'folder'; parent: string } | null
@@ -47,13 +49,15 @@ function iconFor(path: string) {
   return FileText
 }
 
-export function FileExplorer({ paths, folders, activePath, rootFile, onOpen, onCreateFile, onCreateFolder, onDelete }: Props) {
+export function FileExplorer({ paths, folders, activePath, rootFile, onOpen, onCreateFile, onCreateFolder, onDelete, onUpload }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   /** Folder that new items go into: the last folder clicked, or the open file's folder. */
   const [targetFolder, setTargetFolder] = useState<string | null>(null)
   const [adding, setAdding] = useState<Adding>(null)
   const [name, setName] = useState('')
   const [error, setError] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Overleaf-style context menu & deletion dialog
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -264,11 +268,50 @@ export function FileExplorer({ paths, folders, activePath, rootFile, onOpen, onC
 
   const toolButton = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-body hover:bg-line/60 hover:text-ink'
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onUpload) {
+      void onUpload(e.dataTransfer.files, targetFolder || undefined)
+    }
+  }
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface relative select-none">
+    <div
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className="flex h-full min-h-0 flex-col bg-surface relative select-none"
+    >
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-line pr-2 pl-4">
         <h2 className="text-xs font-semibold text-ink">Files</h2>
         <div className="flex gap-0.5">
+          {onUpload && (
+            <button
+              type="button"
+              className={toolButton}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Upload files"
+              title="Upload files (images, bib, tex)"
+            >
+              <Upload className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          )}
           <button type="button" className={toolButton} onClick={() => startAdding('file')} aria-label="Add file" title="Add file">
             <FilePlus className="h-4 w-4" strokeWidth={1.75} />
           </button>
@@ -276,10 +319,31 @@ export function FileExplorer({ paths, folders, activePath, rootFile, onOpen, onC
             <FolderPlus className="h-4 w-4" strokeWidth={1.75} />
           </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0 && onUpload) {
+              void onUpload(e.target.files, targetFolder || undefined)
+              e.target.value = ''
+            }
+          }}
+          className="hidden"
+        />
       </div>
       <nav aria-label="Project files" className="min-h-0 flex-1 overflow-y-auto p-2">
         <ul>{renderFolder('', 0)}</ul>
       </nav>
+
+      {/* Drag & Drop Visual Overlay */}
+      {isDragging && (
+        <div className="absolute inset-2 z-40 flex flex-col items-center justify-center bg-accent-soft/95 border-2 border-dashed border-accent p-4 text-center rounded-lg backdrop-blur-xs pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+          <Upload className="h-8 w-8 text-accent animate-bounce" />
+          <p className="mt-2 text-xs font-semibold text-ink">Drop files here to add to project</p>
+          <p className="mt-0.5 text-[11px] text-muted">Figures, PDFs, BibTeX, LaTeX</p>
+        </div>
+      )}
 
       {/* Overleaf-style Right-Click Context Menu */}
       {contextMenu && (

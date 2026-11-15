@@ -1,4 +1,4 @@
-import { AlertCircle, Download, Eye, FileText, Loader2, Minus, Play, Plus } from 'lucide-react'
+import { AlertCircle, Download, Eye, FileText, FolderOpen, Loader2, Minus, Play, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CompilerInfo } from '../backend'
 import { cn } from '../lib/cn'
@@ -20,6 +20,7 @@ interface Props {
   onSelectCompiler: (path: string) => void
   onInstallTectonic: () => void
   installingTectonic: boolean
+  onRevealPdf?: () => void
 }
 
 /**
@@ -38,6 +39,7 @@ export function PreviewPanel({
   onSelectCompiler,
   onInstallTectonic,
   installingTectonic,
+  onRevealPdf,
 }: Props) {
   const [zoom, setZoom] = useState(100)
   const [mode, setMode] = useState<'pdf' | 'draft'>('pdf')
@@ -54,6 +56,16 @@ export function PreviewPanel({
 
   const hasCompiler = detectedCompilers.length > 0
   const activeCompiler = detectedCompilers.find((c) => c.path === selectedCompiler) || detectedCompilers[0]
+
+  const handleDownloadPdf = () => {
+    if (!pdfUrl) return
+    const a = document.createElement('a')
+    a.href = pdfUrl
+    a.download = rootFile ? rootFile.replace(/\.tex$/i, '.pdf') : 'document.pdf'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
@@ -136,8 +148,8 @@ export function PreviewPanel({
           </span>
         )}
 
-        {/* Right side controls */}
-        <div className="ml-auto flex items-center gap-1">
+        {/* Right side controls: Download PDF & Zoom */}
+        <div className="ml-auto flex items-center gap-1.5">
           {mode === 'draft' && (
             <>
               <button type="button" className={iconButton} onClick={() => step(-1)} disabled={zoom === ZOOMS[0]} aria-label="Zoom out">
@@ -150,15 +162,29 @@ export function PreviewPanel({
             </>
           )}
           {mode === 'pdf' && pdfUrl && (
-            <a
-              href={pdfUrl}
-              download={rootFile ? rootFile.replace(/\.tex$/i, '.pdf') : 'document.pdf'}
-              className={iconButton}
-              title="Download compiled PDF"
-              aria-label="Download compiled PDF"
-            >
-              <Download className="h-4 w-4" />
-            </a>
+            <>
+              {onRevealPdf && (
+                <button
+                  type="button"
+                  onClick={onRevealPdf}
+                  className={iconButton}
+                  title="Show PDF file in folder"
+                  aria-label="Show PDF file in folder"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-accent/90 transition-all active:scale-95"
+                title="Download compiled PDF"
+                aria-label="Download compiled PDF"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Download PDF</span>
+              </button>
+            </>
           )}
         </div>
       </div>

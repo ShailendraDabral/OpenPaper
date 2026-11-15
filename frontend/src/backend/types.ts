@@ -93,9 +93,11 @@ export interface ProjectBackend {
    * the save is refused (kind 'conflict') if the file changed on disk since.
    */
   writeTextFile(path: string, content: string, expectedModifiedMs?: number): Promise<number>
+  writeBinaryFile(path: string, bytes: Uint8Array): Promise<number>
   createFile(path: string): Promise<number>
   createFolder(path: string): Promise<void>
   deleteFile(path: string): Promise<void>
+  revealFile(path?: string): Promise<void>
 
   /* Compiler and PDF methods */
   detectCompilers(): Promise<CompilerInfo[]>

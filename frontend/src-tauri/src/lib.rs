@@ -19,6 +19,7 @@ use error::{AppError, Result};
 use project::{Listing, StarterFile, TextFile};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -150,6 +151,47 @@ async fn write_text_file(state: State<'_, AppState>, path: String, content: Stri
 }
 
 #[tauri::command]
+async fn write_binary_file(state: State<'_, AppState>, path: String, bytes: Vec<u8>) -> Result<u64> {
+    project::write_bytes(&current_root(&state)?, &path, &bytes)
+}
+
+#[tauri::command]
+async fn reveal_file(state: State<'_, AppState>, path: Option<String>) -> Result<()> {
+    let root = current_root(&state)?;
+    let target = match path {
+        Some(p) => root.join(p),
+        None => root,
+    };
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("explorer");
+        if target.is_file() {
+            cmd.arg("/select,");
+            cmd.arg(&target);
+        } else {
+            cmd.arg(&target);
+        }
+        let _ = cmd.spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = Command::new("open");
+        if target.is_file() {
+            cmd.arg("-R");
+        }
+        cmd.arg(&target);
+        let _ = cmd.spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(if target.is_file() { target.parent().unwrap_or(&target) } else { &target });
+        let _ = cmd.spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn create_file(state: State<'_, AppState>, path: String) -> Result<u64> {
     project::create_file(&current_root(&state)?, &path)
 }
@@ -202,9 +244,11 @@ pub fn run() {
             list_files,
             read_text_file,
             write_text_file,
+            write_binary_file,
             create_file,
             create_folder,
             delete_file,
+            reveal_file,
             detect_compilers,
             compile_project,
             read_pdf,

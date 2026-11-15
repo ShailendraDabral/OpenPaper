@@ -9,13 +9,35 @@ import { tags as t } from '@lezer/highlight'
 
 /** Project facts the completions draw on. Read lazily so they are always current. */
 export interface CompletionData {
-  citations: { key: string; title: string }[]
+  citations: { key: string; title: string; author?: string; year?: string }[]
   labels: string[]
   texFiles: string[]
   figureFiles: string[]
 }
 
-const ENVIRONMENTS = ['abstract', 'align', 'center', 'document', 'enumerate', 'equation', 'figure', 'itemize', 'table', 'tabular', 'theorem', 'proof']
+const ENVIRONMENTS = [
+  'abstract',
+  'align',
+  'align*',
+  'bmatrix',
+  'center',
+  'document',
+  'enumerate',
+  'equation',
+  'equation*',
+  'figure',
+  'figure*',
+  'gather',
+  'itemize',
+  'matrix',
+  'pmatrix',
+  'proof',
+  'table',
+  'table*',
+  'tabular',
+  'theorem',
+  'vmatrix',
+]
 
 const snippet = (template: string, label: string, detail: string) => snippetCompletion(template, { label, detail, type: 'function' })
 
@@ -34,9 +56,14 @@ const COMMANDS: Completion[] = [
   snippet('\\begin{${env}}\n\t${}\n\\end{${env}}', '\\begin', 'environment'),
   snippet('\\section{${title}}', '\\section', 'heading'),
   snippet('\\subsection{${title}}', '\\subsection', 'heading'),
+  snippet('\\subsubsection{${title}}', '\\subsubsection', 'heading'),
   chained('\\cite{${}}', '\\cite', 'citation'),
+  chained('\\citep{${}}', '\\citep', 'parenthetical citation'),
+  chained('\\citet{${}}', '\\citet', 'textual citation'),
   chained('\\ref{${}}', '\\ref', 'cross-reference'),
   chained('\\eqref{${}}', '\\eqref', 'equation reference'),
+  chained('\\autoref{${}}', '\\autoref', 'auto reference'),
+  chained('\\cref{${}}', '\\cref', 'clever reference'),
   snippet('\\label{${name}}', '\\label', 'label'),
   snippet('\\frac{${num}}{${den}}', '\\frac', 'fraction'),
   snippet('\\includegraphics[width=${0.8}\\linewidth]{${file}}', '\\includegraphics', 'figure file'),
@@ -47,8 +74,20 @@ const COMMANDS: Completion[] = [
   snippet('\\emph{${text}}', '\\emph', 'emphasis'),
   snippet('\\texttt{${text}}', '\\texttt', 'monospace'),
   snippet('\\begin{equation}\n\t${}\n\\end{equation}', '\\begin{equation}', 'numbered equation'),
-  snippet('\\begin{figure}[t]\n\t\\centering\n\t\\includegraphics[width=0.8\\linewidth]{${file}}\n\t\\caption{${caption}}\n\t\\label{fig:${name}}\n\\end{figure}', '\\begin{figure}', 'figure with caption'),
+  snippet('\\begin{align}\n\t${}\n\\end{align}', '\\begin{align}', 'aligned equations'),
+  snippet('\\begin{pmatrix}\n\t${}\n\\end{pmatrix}', '\\begin{pmatrix}', 'parenthesized matrix'),
+  snippet(
+    '\\begin{figure}[t]\n\t\\centering\n\t\\includegraphics[width=0.8\\linewidth]{${file}}\n\t\\caption{${caption}}\n\t\\label{fig:${name}}\n\\end{figure}',
+    '\\begin{figure}',
+    'figure with caption',
+  ),
+  snippet(
+    '\\begin{table}[t]\n\t\\centering\n\t\\caption{${caption}}\n\t\\label{tab:${name}}\n\t\\begin{tabular}{${lcc}}\n\t\t\\hline\n\t\t${A} & ${B} & ${C} \\\\\n\t\t\\hline\n\t\\end{tabular}\n\\end{table}',
+    '\\begin{table}',
+    'table with caption',
+  ),
   snippet('\\begin{itemize}\n\t\\item ${}\n\\end{itemize}', '\\begin{itemize}', 'bullet list'),
+  snippet('\\begin{enumerate}\n\t\\item ${}\n\\end{enumerate}', '\\begin{enumerate}', 'numbered list'),
   ...['item', 'centering', 'maketitle', 'printbibliography', 'tableofcontents', 'newpage', 'alpha', 'beta', 'gamma', 'delta', 'theta', 'kappa', 'lambda', 'mu', 'pi', 'sigma', 'omega', 'ell', 'partial', 'nabla', 'infty', 'times', 'approx', 'leq', 'geq', 'sum', 'int'].map(
     (name): Completion => ({ label: `\\${name}`, type: 'keyword' }),
   ),
@@ -65,10 +104,21 @@ export function latexCompletionSource(getData: () => CompletionData) {
     const data = getData()
     let m: RegExpExecArray | null
 
-    if ((m = /\\(?:cite|citep|citet)(?:\[[^\]]*\])?\{(?:[^}]*,\s*)?([^},]*)$/.exec(before))) {
-      return list(context, m[1], data.citations.map((c) => ({ label: c.key, detail: c.title, type: 'constant' })))
+    if ((m = /\\(?:cite[a-zA-Z]*|nocite)(?:\[[^\]]*\])?\{(?:[^}]*,\s*)?([^},]*)$/.exec(before))) {
+      return list(
+        context,
+        m[1],
+        data.citations.map((c) => {
+          const authorYear = [c.author, c.year].filter(Boolean).join(', ')
+          return {
+            label: c.key,
+            detail: authorYear ? `${authorYear} — ${c.title}` : c.title,
+            type: 'constant',
+          }
+        }),
+      )
     }
-    if ((m = /\\(?:eqref|ref|autoref|cref)\{([^}]*)$/.exec(before))) {
+    if ((m = /\\(?:eqref|ref|autoref|cref|Cref|pageref)\{([^}]*)$/.exec(before))) {
       return list(context, m[1], data.labels.map((label) => ({ label, type: 'constant' })))
     }
     if ((m = /\\(?:begin|end)\{([^}]*)$/.exec(before))) {

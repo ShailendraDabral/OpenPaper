@@ -212,6 +212,12 @@ export const memoryBackend: ProjectBackend = {
     addFile(project, path, content)
     return project.files.get(path)!.modifiedMs
   },
+  writeBinaryFile: async (path) => {
+    const project = need()
+    if (!validPath(path)) throw new BackendError('invalidPath', `"${path}" is not a valid path inside the project.`)
+    addFile(project, path, null)
+    return project.files.get(path)!.modifiedMs
+  },
   createFile: async (path) => {
     const project = need()
     if (!validPath(path)) throw new BackendError('invalidPath', `"${path}" is not a valid path inside the project.`)
@@ -238,6 +244,7 @@ export const memoryBackend: ProjectBackend = {
       if (f.startsWith(prefix)) project.folders.delete(f)
     }
   },
+  revealFile: async () => {},
   detectCompilers: async () => [
     {
       available: true,

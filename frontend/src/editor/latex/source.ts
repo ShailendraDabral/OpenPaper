@@ -69,8 +69,9 @@ export function parseBib(src: string): BibEntry[] {
   starts.forEach((m, i) => {
     const body = src.slice((m.index ?? 0) + m[0].length, starts[i + 1]?.index ?? src.length)
     const fields: Record<string, string> = {}
-    for (const f of body.matchAll(/(\w+)\s*=\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g)) {
-      fields[f[1].toLowerCase()] = f[2].replace(/[{}]/g, '').replace(/\s+/g, ' ').trim()
+    for (const f of body.matchAll(/(\w+)\s*=\s*(?:\{((?:[^{}]|\{[^{}]*\})*)\}|"([^"]*)"|(\d+))/g)) {
+      const val = f[2] ?? f[3] ?? f[4] ?? ''
+      fields[f[1].toLowerCase()] = val.replace(/[{}]/g, '').replace(/\s+/g, ' ').trim()
     }
     entries.push({ key: m[2], fields })
   })

@@ -226,6 +226,18 @@ export const memoryBackend: ProjectBackend = {
     addFile(project, `${path}/.keep`, null)
     project.files.delete(`${path}/.keep`)
   },
+  deleteFile: async (path) => {
+    const project = need()
+    project.files.delete(path)
+    project.folders.delete(path)
+    const prefix = path.endsWith('/') ? path : `${path}/`
+    for (const k of [...project.files.keys()]) {
+      if (k.startsWith(prefix)) project.files.delete(k)
+    }
+    for (const f of [...project.folders.values()]) {
+      if (f.startsWith(prefix)) project.folders.delete(f)
+    }
+  },
   detectCompilers: async () => [
     {
       available: true,

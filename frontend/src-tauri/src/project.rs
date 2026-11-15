@@ -187,6 +187,19 @@ pub fn create_dir(root: &Path, rel: &str) -> Result<()> {
     fs::create_dir_all(&path).map_err(|e| AppError::io(&format!("Could not create \"{rel}\""), e))
 }
 
+/// Delete a file or directory inside the project.
+pub fn delete_entry(root: &Path, rel: &str) -> Result<()> {
+    let path = resolve_existing(root, rel)?;
+    if path == root {
+        return Err(AppError::InvalidPath("Cannot delete the project root folder.".into()));
+    }
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| AppError::io(&format!("Could not delete \"{rel}\""), e))
+    } else {
+        fs::remove_file(&path).map_err(|e| AppError::io(&format!("Could not delete \"{rel}\""), e))
+    }
+}
+
 /// Create a new project folder `name` inside `parent` and fill it with starter files.
 /// Returns the canonical path of the new folder.
 pub fn create_project(parent: &Path, name: &str, files: &[StarterFile]) -> Result<PathBuf> {
@@ -315,5 +328,17 @@ mod tests {
         let escaping = [StarterFile { path: "../outside.tex".into(), content: "x".into() }];
         assert!(matches!(create_project(parent.path(), "Other", &escaping), Err(AppError::InvalidPath(_))));
         assert!(!parent.path().join("outside.tex").exists());
+    }
+
+    #[test]
+    fn deletes_file_and_directory() {
+        let (_dir, root) = project();
+        assert!(root.join("sections/intro.tex").exists());
+        delete_entry(&root, "sections/intro.tex").unwrap();
+        assert!(!root.join("sections/intro.tex").exists());
+
+        assert!(root.join("sections").is_dir());
+        delete_entry(&root, "sections").unwrap();
+        assert!(!root.join("sections").exists());
     }
 }

@@ -95,6 +95,7 @@ export interface ProjectBackend {
   writeTextFile(path: string, content: string, expectedModifiedMs?: number): Promise<number>
   createFile(path: string): Promise<number>
   createFolder(path: string): Promise<void>
+  deleteFile(path: string): Promise<void>
 
   /* Compiler and PDF methods */
   detectCompilers(): Promise<CompilerInfo[]>

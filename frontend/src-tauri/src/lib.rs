@@ -160,6 +160,11 @@ async fn create_folder(state: State<'_, AppState>, path: String) -> Result<()> {
 }
 
 #[tauri::command]
+async fn delete_file(state: State<'_, AppState>, path: String) -> Result<()> {
+    project::delete_entry(&current_root(&state)?, &path)
+}
+
+#[tauri::command]
 async fn detect_compilers() -> Result<Vec<compiler::CompilerInfo>> {
     Ok(compiler::detect_compilers())
 }
@@ -199,6 +204,7 @@ pub fn run() {
             write_text_file,
             create_file,
             create_folder,
+            delete_file,
             detect_compilers,
             compile_project,
             read_pdf,

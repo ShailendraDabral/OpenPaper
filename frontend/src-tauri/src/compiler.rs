@@ -24,6 +24,131 @@ pub struct CompileOutput {
     pub duration_ms: u64,
 }
 
+const PLACEHOLDER_PDF: &[u8] = include_bytes!("../assets/placeholder.pdf");
+const PLACEHOLDER_PNG: &[u8] = include_bytes!("../assets/placeholder.png");
+const PLACEHOLDER_JPG: &[u8] = include_bytes!("../assets/placeholder.jpg");
+
+/// Extract target image file names from \includegraphics commands in LaTeX text
+fn extract_graphics_targets(text: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut remaining = text;
+    while let Some(idx) = remaining.find(r"\includegraphics") {
+        let after_cmd = &remaining[idx + r"\includegraphics".len()..];
+        let after_trim = after_cmd.trim_start();
+        let after_opts = if after_trim.starts_with('[') {
+            if let Some(close_bracket) = after_trim.find(']') {
+                &after_trim[close_bracket + 1..]
+            } else {
+                after_trim
+            }
+        } else {
+            after_trim
+        };
+        let after_opts_trim = after_opts.trim_start();
+        if after_opts_trim.starts_with('{') {
+            if let Some(close_brace) = after_opts_trim.find('}') {
+                let inner = after_opts_trim[1..close_brace].trim();
+                if !inner.is_empty() {
+                    let clean = inner.trim_matches('"').trim_matches('\'').replace('\\', "/");
+                    let clean_trim = clean.trim_start_matches("./");
+                    if !clean_trim.is_empty() && !targets.contains(&clean_trim.to_string()) {
+                        targets.push(clean_trim.to_string());
+                    }
+                }
+                remaining = &after_opts_trim[close_brace + 1..];
+                continue;
+            }
+        }
+        remaining = &remaining[idx + r"\includegraphics".len()..];
+    }
+    targets
+}
+
+/// Recursively find all .tex files in project
+fn find_tex_files(dir: &Path, list: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(ft) = entry.file_type() {
+                if ft.is_dir() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if name_str != ".git" && name_str != ".openpaper" && name_str != "node_modules" {
+                        find_tex_files(&path, list);
+                    }
+                } else if ft.is_file() {
+                    if let Some(ext) = path.extension() {
+                        if ext.to_string_lossy().eq_ignore_ascii_case("tex") {
+                            list.push(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Ensure all graphics referenced in \includegraphics commands exist, creating clean placeholders if missing
+fn ensure_resilient_graphics(root: &Path) -> Vec<String> {
+    let mut tex_files = Vec::new();
+    find_tex_files(root, &mut tex_files);
+
+    let mut missing_resolved = Vec::new();
+
+    for tex_path in tex_files {
+        let content = match std::fs::read_to_string(&tex_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        for target in extract_graphics_targets(&content) {
+            let target_path = root.join(&target);
+            if target_path.is_file() {
+                continue;
+            }
+
+            let has_ext = target.contains('.');
+            let mut found_with_ext = false;
+            if !has_ext {
+                for ext in &["pdf", "png", "jpg", "jpeg"] {
+                    let candidate = root.join(format!("{target}.{ext}"));
+                    if candidate.is_file() {
+                        found_with_ext = true;
+                        break;
+                    }
+                }
+            }
+            if found_with_ext {
+                continue;
+            }
+
+            let (target_file, bytes) = if target.to_lowercase().ends_with(".png") {
+                (target.clone(), PLACEHOLDER_PNG)
+            } else if target.to_lowercase().ends_with(".jpg") || target.to_lowercase().ends_with(".jpeg") {
+                (target.clone(), PLACEHOLDER_JPG)
+            } else if target.to_lowercase().ends_with(".pdf") {
+                (target.clone(), PLACEHOLDER_PDF)
+            } else {
+                (format!("{target}.pdf"), PLACEHOLDER_PDF)
+            };
+
+            let out_file = root.join(&target_file);
+            if !out_file.is_file() {
+                if let Some(parent) = out_file.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if std::fs::write(&out_file, bytes).is_ok() {
+                    if !missing_resolved.contains(&target_file) {
+                        missing_resolved.push(target_file);
+                    }
+                }
+            }
+        }
+    }
+
+    missing_resolved
+}
+
 fn dirs_home() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
@@ -253,9 +378,13 @@ pub fn compile(root: &Path, root_file: &str, compiler_path: Option<&str>) -> Res
         }
     };
 
+    // Pre-flight check: auto-recover any missing graphic assets to prevent TeX halts
+    let auto_recovered = ensure_resilient_graphics(root);
+
     let comp_name = comp.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     let mut cmd = Command::new(&comp);
     cmd.current_dir(root);
+    cmd.stdin(std::process::Stdio::null());
 
     #[cfg(windows)]
     {
@@ -265,12 +394,15 @@ pub fn compile(root: &Path, root_file: &str, compiler_path: Option<&str>) -> Res
 
     // Build compiler arguments
     if comp_name.contains("tectonic") {
+        cmd.arg("-Z");
+        cmd.arg("continue-on-errors");
         cmd.arg(root_file);
         cmd.arg("--outdir");
         cmd.arg(root);
     } else if comp_name.contains("latexmk") {
         cmd.arg("-pdf");
         cmd.arg("-interaction=nonstopmode");
+        cmd.arg("-file-line-error");
         cmd.arg(root_file);
     } else {
         // pdflatex, xelatex, lualatex
@@ -285,6 +417,15 @@ pub fn compile(root: &Path, root_file: &str, compiler_path: Option<&str>) -> Res
 
     let duration_ms = start_time.elapsed().as_millis() as u64;
     let mut log = String::new();
+    if !auto_recovered.is_empty() {
+        log.push_str("[OpenPaper Auto-Recovery] Missing figure file(s) detected in manuscript.\n");
+        log.push_str("Clean placeholder graphics were automatically generated to ensure compilation succeeds:\n");
+        for file in &auto_recovered {
+            log.push_str(&format!("  • {file}\n"));
+        }
+        log.push_str("You can upload your actual image file to replace each placeholder anytime.\n");
+        log.push_str("--------------------------------------------------------------------------------\n\n");
+    }
     if !output.stdout.is_empty() {
         log.push_str(&String::from_utf8_lossy(&output.stdout));
     }

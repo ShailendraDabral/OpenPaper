@@ -321,6 +321,39 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
     }
   }
 
+  const deleteFileOrFolder = async (path: string) => {
+    try {
+      await backend.deleteFile(path)
+      const prefix = path.endsWith('/') ? path : `${path}/`
+      const affected = (p: string) => p === path || p.startsWith(prefix)
+
+      for (const k of Object.keys(disk.current)) {
+        if (affected(k)) delete disk.current[k]
+      }
+      setFiles((f) => {
+        const next = { ...f }
+        for (const k of Object.keys(next)) {
+          if (affected(k)) delete next[k]
+        }
+        return next
+      })
+
+      setTabs((prevTabs) => {
+        const nextTabs = prevTabs.filter((t) => !affected(t))
+        if (active && affected(active)) {
+          const fallback = nextTabs[0] ?? null
+          setActive(fallback)
+        }
+        return nextTabs
+      })
+
+      const listing = await backend.listFiles()
+      setEntries(listing.entries)
+    } catch (e) {
+      setNotice(messageOf(e))
+    }
+  }
+
   const leave = async () => {
     await save()
     await closeProject()
@@ -527,6 +560,7 @@ function Workspace({ project, initial }: { project: ProjectInfo; initial: Loaded
                 onOpen={openFile}
                 onCreateFile={createFile}
                 onCreateFolder={createFolder}
+                onDelete={deleteFileOrFolder}
               />
             </aside>
             <Splitter orientation="vertical" label="Resize project explorer" onResize={(d) => setExplorerWidth((w) => clamp(w + d, 160, 480))} />

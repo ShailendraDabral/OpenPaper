@@ -38,6 +38,7 @@ export const tauriBackend: ProjectBackend = {
   writeTextFile: (path, content, expectedModifiedMs) => call<number>('write_text_file', { path, content, expectedModifiedMs: expectedModifiedMs ?? null }),
   createFile: (path) => call<number>('create_file', { path }),
   createFolder: (path) => call<void>('create_folder', { path }),
+  deleteFile: (path) => call<void>('delete_file', { path }),
   detectCompilers: () => call<CompilerInfo[]>('detect_compilers'),
   compileProject: (rootFile, compilerPath) => call<CompileResult>('compile_project', { rootFile, compilerPath: compilerPath ?? null }),
   readPdf: async (filename) => {

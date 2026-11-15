@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window may ask of the system. File access goes only through OpenPaper's own commands, which check every path; no general filesystem, shell or network plugin is exposed to the interface.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

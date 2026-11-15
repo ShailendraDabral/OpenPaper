@@ -1,0 +1,174 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------
+   Design tokens
+   Semantic colour roles are CSS variables so light/dark switch in one
+   place. Components use the role names (bg-canvas, text-ink, ...) and
+   rarely need a `dark:` variant.
+------------------------------------------------------------------- */
+:root {
+  --canvas: #ffffff; /* page background */
+  --surface: #f4f6f9; /* light grey panels */
+  --raised: #ffffff; /* cards on top of surface */
+  --line: #dce2ea; /* borders and rules */
+  --ink: #0b2545; /* deep navy: headings, strong text */
+  --body: #3d4c63; /* running text */
+  --muted: #64738a; /* secondary text */
+  --accent: #2b62d9; /* links, focus, highlights */
+  --accent-soft: #e9f0fd;
+  --primary: #0b2545; /* primary button */
+  --primary-hover: #143560;
+  --primary-fg: #ffffff;
+
+  /* The code editor is navy in both themes. */
+  --editor: #0b1e38;
+  --editor-line: #1c3254;
+  --editor-text: #d6e0ef;
+  --editor-muted: #7387a6;
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: #081220;
+  --surface: #0d1a2e;
+  --raised: #11213b;
+  --line: #1f3050;
+  --ink: #eef2f8;
+  --body: #b7c2d3;
+  --muted: #8594ab;
+  --accent: #8db0ff;
+  --accent-soft: #15284a;
+  --primary: #dfe9fb;
+  --primary-hover: #ffffff;
+  --primary-fg: #0b2545;
+
+  --editor: #0a1a31;
+  --editor-line: #1c3254;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-editor: var(--editor);
+  --color-editor-line: var(--editor-line);
+  --color-editor-text: var(--editor-text);
+  --color-editor-muted: var(--editor-muted);
+  --color-navy: #0b2545;
+
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'STIX Two Text', 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --shadow-page: 0 1px 2px rgb(11 37 69 / 0.06), 0 12px 32px -8px rgb(11 37 69 / 0.18);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    background: var(--canvas);
+    color: var(--body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button {
+    cursor: pointer;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Hero: the page "compiles" once on load. */
+@keyframes compile-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.compile-in {
+  animation: compile-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+}
+
+/* ------------------------------------------------------------------
+   Workspace: code editor colours (follow the theme) and preview maths
+------------------------------------------------------------------- */
+:root {
+  --code-bg: #ffffff;
+  --code-text: #1a2740;
+  --code-gutter: #9aa6b8;
+  --code-active: #f3f6fb;
+  --code-selection: #cfdefa;
+  --tok-command: #2b62d9;
+  --tok-keyword: #0b2545;
+  --tok-atom: #0f766e;
+  --tok-comment: #8a96a8;
+  --tok-math: #a85d00;
+  --tok-bracket: #7b889c;
+}
+.dark {
+  --code-bg: #0a1626;
+  --code-text: #d6e0ef;
+  --code-gutter: #56698a;
+  --code-active: #101f36;
+  --code-selection: #1f3c6e;
+  --tok-command: #8db0ff;
+  --tok-keyword: #eef2f8;
+  --tok-atom: #7fd6c4;
+  --tok-comment: #6f819e;
+  --tok-math: #e9cf96;
+  --tok-bracket: #7f9ac4;
+}
+
+.op-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 0.15em;
+  font-size: 0.9em;
+  line-height: 1.15;
+}
+.op-frac > span:first-child {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.25em 0.05em;
+}
+.op-frac > span:last-child {
+  padding-top: 0.05em;
+}
+.op-upright {
+  font-style: normal;
+}
